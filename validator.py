@@ -1,5 +1,5 @@
-def validate_mandatory_fields(data):
-    missing = []
+def validate(data):
+    errors = []
     for field in [
         "AGENCY_NAME",
         "CLIENT_NAME",
@@ -10,10 +10,10 @@ def validate_mandatory_fields(data):
     ]:
         value = data.get(field)
         if value is None:
-            missing.append(field)
+            errors.append(field)
             continue
 
         if isinstance(value, str) and value.strip() == "":
-            missing.append(field)
+            errors.append(field)
             continue
-    return missing
+    return errors

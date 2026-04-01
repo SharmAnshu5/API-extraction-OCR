@@ -16,3 +16,19 @@ git add .
 git commit -m "Product"
 git push -u origin main
 ```
+
+
+
+📁 Multiple Folder Watch
+        ↓
+🆔 Identifier (file type / source detection)
+        ↓
+🔀 Router (decide processing logic)
+        ↓
+📄 Parser (extract text using OpenAI / OCR)
+        ↓
+✅ Validation (business rules + data checks)
+        ↓
+❌ If Error → 📧 Send Email Alert
+        ↓
+▶️ main.py (final processing & storage)
