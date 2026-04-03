@@ -1,18 +1,34 @@
 RO_OCR_DATA
 
-Multiple folder watch
-      |
-      |
-identifier
-      |
-      |
-  Router --> definre the routes for the pdf 
-      |
-      |
-  parser --> parse the pdf and extract the text
-      |
-      | 
-  valadation --> validate the extracted text and check for errors
-      |  email send 
-      |  |
-      main.py     
+
+```
+ git init
+>> git add README.md
+>> git commit -m "first commit"
+>> git branch -M main
+>> git remote add origin https://github.com/utkarshsharma2002us/API-extraction-OCR.git
+>> git push -u origin main
+
+
+
+git pull 
+git add .
+git commit -m "Product"
+git push -u origin main
+```
+
+
+
+📁 Multiple Folder Watch
+        ↓
+🆔 Identifier (file type / source detection)
+        ↓
+🔀 Router (decide processing logic)
+        ↓
+📄 Parser (extract text using OpenAI / OCR)
+        ↓
+✅ Validation (business rules + data checks)
+        ↓
+❌ If Error → 📧 Send Email Alert
+        ↓
+▶️ main.py (final processing & storage)
