@@ -1,5 +1,3 @@
-# email_service.py
-
 import os
 import smtplib
 import logging
@@ -12,7 +10,13 @@ from email.utils import formatdate
 SMTP_HOST = "10.59.50.13"
 SMTP_PORT = 587
 logger = logging.getLogger("ocr_email")
-logger = logging.getLogger("booking_logic")
+
+
+def _safe_header_value(value):
+    """Flatten header content so SMTP headers never receive raw newlines."""
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\r", " ").replace("\n", " ").split())
 
 
 def run_booking_logic(fields, conn=None):
@@ -49,21 +53,32 @@ def send_issue_email_adops(adbook, issue, conn=None):
         sender = "noreply@amarujala.com"
         recipient = "anshu.sharma@mrt.amarujala.com"
         cc_list = ["deal-support@mrt.amarujala.com", "anshusharma5.as@gmail.com"]
+        
+        # DEBUG: Check if PDF_PATH exists
+        pdf_path = adbook.get("PDF_PATH")
+        logger.debug(f"DEBUG: PDF_PATH = {pdf_path}")
+        logger.debug(f"DEBUG: PDF exists = {os.path.exists(pdf_path) if pdf_path else False}")
+        
         if isinstance(issue, (list, tuple)):
             reasons = [str(x) for x in issue]
         else:
             reasons = [str(issue)]
-        subject = (
+        
+        subject = _safe_header_value(
+            (
             f"[OCR Automation Alert] "
             f"{adbook.get('RO_NO', 'UNKNOWN')} | "
             f"{', '.join(reasons)}"
+            )
         )
+        
         msg = MIMEMultipart()
         msg["From"] = sender
         msg["To"] = recipient
         msg["Cc"] = ",".join(cc_list)
         msg["Subject"] = subject
         msg["Date"] = formatdate(localtime=True)
+        
         body = f"""
 Dear Team,
 
@@ -75,9 +90,12 @@ Issue Type:
 Agency        : {adbook.get('AGENCY_NAME', 'N/A')}
 Client        : {adbook.get('CLIENT_NAME', 'N/A')}
 Client Code   : {adbook.get('CLIENT_CODE', 'N/A')}
+RO_CLIENT_Name : {adbook.get('RO_CLIENT_NAME', 'N/A')}
 RO Number     : {adbook.get('RO_NO', 'N/A')}
 RO Date       : {adbook.get('RO_DATE', 'N/A')}
 Insert Date   : {adbook.get('INSERT_DATE', 'N/A')}
+Package       : {adbook.get('PACKAGE_NAME', 'N/A')}
+Clean Date    : {adbook.get('EXTRACTED_TEXT', 'N/A')}
 
 Please review the attached RO.
 
@@ -85,16 +103,23 @@ Regards,
 IT Automation System
 """
         msg.attach(MIMEText(body, "plain"))
-        pdf_path = adbook.get("PDF_PATH")
+        
+        # Attach PDF if available
         if pdf_path and os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                attach = MIMEApplication(f.read(), _subtype="pdf")
-                attach.add_header(
-                    "Content-Disposition",
-                    "attachment",
-                    filename=os.path.basename(pdf_path)
-                )
-                msg.attach(attach)
+            try:
+                with open(pdf_path, "rb") as f:
+                    attach = MIMEApplication(f.read(), _subtype="pdf")
+                    attach.add_header(
+                        "Content-Disposition",
+                        "attachment",
+                        filename=os.path.basename(pdf_path)
+                    )
+                    msg.attach(attach)
+                    logger.info(f"✓ PDF attached successfully | {os.path.basename(pdf_path)}")
+            except Exception as e:
+                logger.error(f"✗ Failed to attach PDF: {e}", exc_info=True)
+        else:
+            logger.error(f"✗ PDF_PATH missing or file not found: {pdf_path}")
 
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
         server.ehlo()
@@ -110,16 +135,17 @@ IT Automation System
 
 
 def send_booking_mail(adbook, conn=None):
-
     try:
         sender = "noreply@amarujala.com"
         recipient = "anshu.sharma@mrt.amarujala.com"
         cc_list = ["deal-support@mrt.amarujala.com", "anshusharma5.as@gmail.com"]
 
-        subject = (
+        subject = _safe_header_value(
+            (
             f"[OCR Booking Success] "
             f"RO {adbook.get('RO_NO', 'N/A')} | "
             f"{adbook.get('AGENCY_NAME', '')}"
+            )
         )
 
         msg = MIMEMultipart()
@@ -148,23 +174,30 @@ IT Automation System
 """
 
         msg.attach(MIMEText(body, "plain"))
-
-        # Attach PDF
+        
+        # Attach PDF if available
         pdf_path = adbook.get("PDF_PATH")
         if pdf_path and os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                attach = MIMEApplication(f.read(), _subtype="pdf")
-                attach.add_header(
-                    "Content-Disposition",
-                    "attachment",
-                    filename=os.path.basename(pdf_path)
-                )
-                msg.attach(attach)
+            try:
+                with open(pdf_path, "rb") as f:
+                    attach = MIMEApplication(f.read(), _subtype="pdf")
+                    attach.add_header(
+                        "Content-Disposition",
+                        "attachment",
+                        filename=os.path.basename(pdf_path)
+                    )
+                    msg.attach(attach)
+                    logger.info(f"PDF attached | {os.path.basename(pdf_path)}")
+            except Exception as e:
+                logger.warning(f"Could not attach PDF: {e}")
+        else:
+            logger.warning(f"PDF not found: {pdf_path}")
 
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
         server.ehlo()
         server.sendmail(sender, [recipient] + cc_list, msg.as_string())
         server.quit()
+        logger.info(f"Success Email Sent | RO: {adbook.get('RO_NO')}")
 
         return True
 
