@@ -15,7 +15,6 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-
 def encode_image(file_path):
     with open(file_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -130,7 +129,7 @@ DO NOT GUESS. If not found → ""
                 )
 
                 response = client.responses.create(
-                    model="gpt-4.1",
+                    model="gpt-4.1-mini",
                     input=[{
                         "role": "user",
                         "content": [
@@ -147,7 +146,7 @@ DO NOT GUESS. If not found → ""
                 base64_data = encode_image(file_path)
 
                 response = client.chat.completions.create(
-                    model="gpt-4.1",
+                    model="gpt-4.1-mini",
                     temperature=0,
                     messages=[{
                         "role": "user",
