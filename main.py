@@ -5,7 +5,7 @@ import oracledb
 from dotenv import load_dotenv
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from ro_workflow import process_pdf
+from workflow import process_pdf
 
 load_dotenv()
 
