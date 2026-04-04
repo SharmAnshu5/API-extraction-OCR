@@ -59,6 +59,7 @@ Return ONLY ONE JSON object (no explanation).
 
 Keys: {', '.join(headers)}
 
+THERE ARE SOME HANDWRITTEN ROs ALSO. SO, PLEASE EXTRACT THE HANDWRITTEN ONES ALSO. IF ANY FIELD IS NOT FOUND THEN LEAVE IT BLANK.
 STRICT BUSINESS RULES:
 - RO_REMARKS = Caption / Remarks of advertisement / additional information related to advertisement
 - AD_SIZE = multiplication of height and width
@@ -69,20 +70,21 @@ STRICT BUSINESS RULES:
 - RO_DATE = dd-mm-yyyy (it is a date of release order)
 - CITY_NAME = AGENCY NAME city.
 - RO_CLIENT_NAME = CLIENT NAME WITHOUT CITY NAME
-- PACKAGE_NAME = City name of CLIENT_NAME/Advertisement/Edition but the name should be mapped to a city code using below mapping.
+- THERE CAN BE MULTIPLE PACKAGE_NAME IN ONE RO. IN THAT CASE, ALL THE PACKAGE NAMES SHOULD BE EXTRACTED AND SEPARATED BY COMMA.
+  PACKAGE_NAME = City name of CLIENT_NAME/Advertisement/Edition but the name should be mapped to a city code using below mapping.
         City Name            : City Code
         "DEHRADUN"           : "AU-DDN",
         "AGRA"               : "AU-AGR",
         "DELHI"              : "AU-NWD",
-        "CHANDIGARH"         : "AU-CHA",
+        "CHANDIGARH"         : "AU-CHD",
         "ROHTAK "            : "AU-RTK",    
-        "NAINITAL"           : "AU-NAI",
+        "NAINITAL"           : "AU-NTL",
         "LUCKNOW"            : "AU-LKO",
         "PRAYAGRAJ"          : "AU-ALD",
         "JHANSI"             : "AU-JHA",
         "VARANASI"           : "AU-VNS",
         "JALANDHAR"          : "AU-JAL",
-        "DHARAMSHALA"        : "AU-DSL",
+        "DHARAMSHALA"        : "AU-DHM",
         "ALIGARH"            : "AU-ALG",
         "GORAKHPUR"          : "AU-GKP",
         "BAREILLY"           : "AU-BLY",
@@ -93,6 +95,7 @@ STRICT BUSINESS RULES:
         "HISAR"              : "AU-HIS",
         "KARNAL"             : "AU-KNL",
         "JAMMU"              : "AU-JMU",
+IF PACKAGE NAME IS NOT FOUND IN MAPPING THEN LEAVE PACKAGE CODE BLANK. DO NOT GUESS. IF NOT FOUND → ""
 
 product name is to be identified that suits the best from:
 
@@ -101,6 +104,7 @@ DISPLAY ADVERTISING, TENDER, PUBLIC NOTICES, AUCTION, RECRUITMENT, OTHERS, ADMIS
 (Fixed value)AD_CAT = G02
 (Fixed value)AGENCY_CODE = NONE
 (Fixed value)RO_CLIENT_CODE = NONE
+(Fixed value)CLIENT_NAME = NONE
 
 AD_SUBCAT will be determine based on the CATEGORY value using below mapping.
     CATEGORY    :    AD_SUBCAT
@@ -118,6 +122,7 @@ else: if booking_centre = CHANDIGARH then Agency_code_subcode = SA329SAM81 else 
 
 EXTRACTED_TEXT = The complete extracted text from the RO which can be used for reference. This should be the raw text extracted without any processing.
 
+IF FIELDS LIKE "RO_AMOUNT", "RO_RATE", "AD_WIDTH", "AD_HEIGHT", RO_NUMBER, GSTIN ARE NOT FOUND THEN DONT CALCULATE OR GUESS, RATHER LEAVE THEM BLANK.
 DO NOT GUESS. If not found → ""
 """
 
@@ -227,4 +232,4 @@ DO NOT GUESS. If not found → ""
 
 # RUN
 if __name__ == "__main__":
-    process_input_folder(r"input folder", r"output.json") # input_folder_contains_pdf, output_json_file
+    process_input_folder(r"input_img", r"output.json") # input_folder_contains_pdf, output_json_file
