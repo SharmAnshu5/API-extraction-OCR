@@ -6,9 +6,12 @@ import os
 import re
 from dotenv import load_dotenv
 from openai import OpenAI
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz
 
-# Load API key
+# ---------------- ENV SETUP ----------------
+os.environ.pop("SSL_CERT_FILE", None)
+os.environ.pop("REQUESTS_CA_BUNDLE", None)
+
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
@@ -16,10 +19,10 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
+# ---------------- UTILITIES ----------------
 def encode_image(file_path):
     with open(file_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
-
 
 def format_date(date_str):
     if not date_str:
@@ -29,42 +32,58 @@ def format_date(date_str):
         return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
     return ""
 
-def load_client_mapping(csv_path):
+# ---------------- NORMALIZATION ----------------
+def normalize(text: str) -> str:
+    if not text:
+        return ""
+    text = text.upper()
+    text = re.sub(r"[^A-Z0-9 ]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+# ---------------- MASTER CLIENT LOADER ----------------
+def load_client_mapping(csv_path: str):
+    """
+    MASTER_CLIENT_NAME -> MASTER_CLIENT_CODE (authoritative)
+    """
     mapping = {}
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            key = normalize(row["MASTER_CLIENT_NAME"])
-            mapping[key] = {
-                "CLIENT_CODE": row.get("CLIENT_CODE", "").strip(),
-                "CLIENT_NAME": row.get("CLIENT_NAME", "").strip()
-            }
+            master_name = row.get("MASTER_CLIENT_NAME", "").strip()
+            master_code = row.get("MASTER_CLIENT_CODE", "").strip()
+
+            if not master_name or not master_code:
+                continue
+
+            key = normalize(master_name)
+            mapping[key] = master_code
 
     return mapping
 
-def normalize(text):
-    return re.sub(r'[^A-Z0-9 ]', '', text.upper()).strip()
-
-def map_client(ro_client_name, mapping):
+# ---------------- CLIENT CODE MAPPER ----------------
+def map_client(ro_client_name: str, mapping: dict) -> str:
     if not ro_client_name:
-        return "", ""
+        return ""
 
     ro_clean = normalize(ro_client_name)
-    choices = list(mapping.keys())
 
-    result = process.extractOne(
-    ro_clean,
-    choices,
-    scorer=fuzz.partial_ratio
-)
-    if result:
-        match, score, _ = result
-        if score > 75:  # Threshold for matching
-            return mapping[match]["CLIENT_CODE"], mapping[match]["CLIENT_NAME"]
+    best_score = 0
+    best_key = None
 
-    return "", ""
+    for master_clean in mapping.keys():
+        score = fuzz.token_set_ratio(ro_clean, master_clean)
+        if score > best_score:
+            best_score = score
+            best_key = master_clean
 
+    if best_score >= 70 and best_key:
+        return mapping[best_key]
+
+    return ""
+
+# ---------------- MAIN PROCESS ----------------
 def process_input_folder(input_folder, output_file, client_mapping):
 
     headers = [
@@ -77,14 +96,14 @@ def process_input_folder(input_folder, output_file, client_mapping):
         "AD_SIZE", "Executive", "PAGE_PREMIUM", "POSITIONING",
         "RO_RATE", "RO_AMOUNT", "EXTRACTED_TEXT"
     ]
-    
+
     Fixed_values = {
         "AGENCY_CODE_SUBCODE": "NONE",
         "AD_CAT": "G02",
         "AD_SUBCAT": "GOVT. DISPLAY",
         "PRODUCT": "DISPLAY ADVERTISING",
     }
-    
+
     Package_mapping = {
         "DEHRADUN": "AU-DDN",
         "AGRA": "AU-AGR",
@@ -108,7 +127,7 @@ def process_input_folder(input_folder, output_file, client_mapping):
         "HISAR": "AU-HIS",
         "KARNAL": "AU-KNL",
         "JAMMU": "AU-JMU"
-        }
+    }
 
     results = []
 
@@ -163,7 +182,9 @@ Keys: {', '.join(headers)}
 🔹 RO_CLIENT_NAME
 - Client name mentioned in the RO
 - Often appears near "To" or in the body of the RO
-- RO_CLIENT_NAME SHOULD ALSO CONTAIN PACKAGE_NAME WITHOUT MAPPING
+- Dont take any , . or - in the RO_CLIENT_NAME
+- Ro_client_name is the client name with railway in it,
+- Put the city_name after the ro_client_name with space in between.
 🔹 AGENCY_NAME
 - Extract from the document
 - Name of the advertising agency responsible for the RO
@@ -196,12 +217,12 @@ Keys: {', '.join(headers)}
 - DO NOT calculate, if not mentioned → "1"
 🔹 AD_SIZE
 - Extract numeric advertising size in (sq cm)
-- if not mentioned → calculate as AD_WIDTH x AD_HEIGHT (only if both are present)
+- if not mentioned then calculate AD_SIZE = AD_WIDTH x AD_HEIGHT
 🔹 COLOUR
 - color of advertisement as mentioned in the RO
 - Only if explicitly mentioned:
   "C" for Clolour or "B" for black & white
-- Else → ""
+- Else → "B"
 🔹 RO_RATE
 - Extract rate per sq cm as mentioned in the RO
 - only Numeric value
@@ -239,7 +260,8 @@ Hardcoded values:
 OUTPUT ONLY JSON. NO EXPLANATION.
 ----------------------------------------
 """
-            # -------- PDF --------
+
+            # ---------- PDF ----------
             if file_name.lower().endswith(".pdf"):
                 uploaded = client.files.create(
                     file=open(file_path, "rb"),
@@ -259,7 +281,7 @@ OUTPUT ONLY JSON. NO EXPLANATION.
 
                 raw = response.output_text.strip()
 
-            # -------- IMAGE --------
+            # ---------- IMAGE ----------
             else:
                 base64_data = encode_image(file_path)
 
@@ -270,85 +292,60 @@ OUTPUT ONLY JSON. NO EXPLANATION.
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_data}"
-                                }
-                            }
+                            {"type": "image_url", "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_data}"
+                            }}
                         ]
                     }]
                 )
 
                 raw = response.choices[0].message.content.strip()
 
-            # CLEAN JSON TEXT
             raw = raw.replace("\n", "").replace("\r", "").strip()
 
-            def extract_json(text):
-                if not text:
-                    return "{}"
-                match = re.search(r"\{.*\}", text, re.DOTALL)
-                if match:
-                    return match.group(0)
-                return "{}"
+            match = re.search(r"\{.*\}", raw)
+            data = json.loads(match.group(0)) if match else {}
 
-            clean_json = extract_json(raw)
-            try:
-                data = json.loads(clean_json)
-            except:
-                data = {}
-
-            # Ensure all keys exist
             for key in headers:
                 data.setdefault(key, "")
 
-            # FILE_NAME
             data["FILE_NAME"] = file_name
-            
-            # CLIENT MAPPING
-            client_code, client_name = map_client(data.get("RO_CLIENT_NAME", ""), client_mapping)
-            data["CLIENT_CODE"] = client_code
-            data["CLIENT_NAME"] = client_name
 
-            # CLEAN RO_NUMBER
+            # -------- CLIENT CODE MAPPING (FINAL & STRICT) --------
+            data["CLIENT_CODE"] = map_client(
+                data.get("RO_CLIENT_NAME", ""),
+                client_mapping
+            )
+
+            # CLIENT_NAME ONLY FROM RO
+            data["CLIENT_NAME"] = data.get("RO_CLIENT_NAME", "")
+
             data["RO_NUMBER"] = re.sub(r"\s+", "", data.get("RO_NUMBER", ""))
-
-            # FORMAT DATES
             data["RO_DATE"] = format_date(data.get("RO_DATE", ""))
             data["INSERT_DATE"] = format_date(data.get("INSERT_DATE", ""))
 
-            # PACKAGE_NAME uppercase
             data["PACKAGE_NAME"] = data.get("PACKAGE_NAME", "").upper().strip()
-
-            # PAGE_PREMIUM logic
-            pos = data.get("POSITIONING", "").strip()
-            data["PAGE_PREMIUM"] = "YES" if pos else "NO"
+            data["PAGE_PREMIUM"] = "YES" if data.get("POSITIONING", "").strip() else "NO"
+            if data["AD_SIZE"] == "":
+                data["AD_SIZE"] = int(data.get("AD_WIDTH")) * int(data.get("AD_HEIGHT"))
 
             results.append(data)
 
         except Exception as e:
             print(f"❌ Error in {file_name}: {e}")
-    
-        # SAVE JSON
+
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
-    print("✅ JSON saved.")
-
-    # SAVE CSV
     csv_file = output_file.replace(".json", ".csv")
-
     with open(csv_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
-
         writer.writeheader()
         writer.writerows(results)
 
-    print("✅ CSV saved.")
+    print("✅ JSON & CSV saved successfully.")
 
-
-# RUN
+# ---------------- RUN ----------------
 if __name__ == "__main__":
-    client_mapping = load_client_mapping("ALL_DATA.csv") # Load client mapping from CSV
-    process_input_folder(r"Railway RO's", r"output.json", client_mapping) # input_folder_contains_pdf, output_json_file
+    client_mapping = load_client_mapping("RAILWAY_ONLY.csv")
+    process_input_folder("Railways", "output.json", client_mapping)
